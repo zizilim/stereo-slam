@@ -77,7 +77,7 @@ int main() {
     clahe->apply(img_right, img_right);
 
     // ORB 객체 생성 (키포인트 최대 수, 스케일, 피라미드 수 등)
-    Ptr<ORB> orb = ORB::create(1000, 1.2f, 8, 31, 0, 2, ORB::HARRIS_SCORE, 31, ORBTHRESHOLD);
+    Ptr<ORB> orb = ORB::create(10000, 1.2f, 8, 31, 0, 2, ORB::HARRIS_SCORE, 31, ORBTHRESHOLD);
 
     // Canny 엣지 + HoughLinesP 직선 검출
     Mat canny_edges, canny_edges_right;
@@ -158,7 +158,6 @@ int main() {
     sort(sortedLeft.begin(), sortedLeft.end(), [&](int a, int b) { return kp_left[a].pt.y < kp_left[b].pt.y; });
     sort(sortedRight.begin(), sortedRight.end(), [&](int a, int b) { return kp_right[a].pt.y < kp_right[b].pt.y; });
 
-	std::vector<cv::DMatch> valid_matches;
     deque<int> trainIndex;
     int current = 0;
     vector<DMatch> matches;
@@ -185,25 +184,25 @@ int main() {
     }
 
     // 시차 계산 (disparity = x 좌표 차이)
+    std::vector<cv::DMatch> valid_matches;
     for (const auto& match : matches) {
-		Point2f pt_left = kp_left[match.queryIdx].pt;
-		Point2f pt_right = kp_right[match.trainIdx].pt;
-		float disparity = pt_right.x - pt_left.x;
-
-		if (disparity > 0 && disparity < 100) {  // 유효 범위만 추가
-			disparities.push_back(disparity);
-			valid_matches.push_back(match);  // 유효 매칭만 따로 저장
-		}
-	}
+        Point2f pt_left = kp_left[match.queryIdx].pt;
+        Point2f pt_right = kp_right[match.trainIdx].pt;
+        float disparity = pt_right.x - pt_left.x;
+        
+        if (disparity > 1 && disparity < 100) {
+        disparities.push_back(disparity);
+        valid_matches.push_back(match);
+    }
+    }
     for(auto d : disparities) cout << d << endl;
 
     // 결과 시각화
     Mat match_img;
-    drawMatches(img_left, kp_left, img_right, kp_right, valid_matches, match_img,
-            Scalar::all(-1), Scalar::all(-1),
-            vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-            
-    imwrite("/home/eunzi/Desktop/orb_matches.jpg", match_img);
+    drawMatches(img_left, kp_left, img_right, kp_right,
+            valid_matches, match_img, Scalar::all(-1),
+            Scalar::all(-1), vector<char>(),
+            DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
 
     Mat direction_img, direction_img_right;
     cvtColor(canny_edges, direction_img, COLOR_GRAY2BGR);
@@ -220,10 +219,11 @@ int main() {
     resize(direction_img_right, direction_img_right, Size(640, 480));
 
     imshow("ORB Matches", match_img);
+    imwrite("/home/eunzi/Desktop/orb_matches.jpg", match_img);
     //imshow("GrayScale left image", img_left);
     //imshow("GrayScale right image", img_right);
-    imshow("Canny-ORB with HoughLines", direction_img);
-    imshow("Canny-ORB with HoughLines_right", direction_img_right);
+    //imshow("Canny-ORB with HoughLines", direction_img);
+    //imshow("Canny-ORB with HoughLines_right", direction_img_right);
 
     cap0.release();
     cap1.release();
