@@ -16,7 +16,7 @@
 사진 딜레이가 심하게 일어나서 이 부분도 수정이 필요할 것으로 보임!
 
 📌 https://github.com/MrPicklesGG/ORB_SLAM3_Grid_Mapping  
-#📌 https://github.com/IATBOMSW/ORB-SLAM2_DENSE
+📌 https://github.com/IATBOMSW/ORB-SLAM2_DENSE
 기존 orb slam들을 실행해 봐야할 거 같음
 
 ## 작성자
