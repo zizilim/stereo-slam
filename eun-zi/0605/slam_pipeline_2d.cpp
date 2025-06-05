@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <deque>
 #include <thread>
-#include <fstream>
 
 #define ORBTHRESHOLD 10
 #define HORIZENTALITY 40
@@ -14,209 +13,101 @@
 using namespace std;
 using namespace cv;
 
-std::string get_pipeline(int sensor_id, int width, int height, int fps) {
-    return "nvarguscamerasrc sensor-id=" + std::to_string(sensor_id) +
+string get_pipeline(int sensor_id, int width, int height, int fps) {
+    return "nvarguscamerasrc sensor-id=" + to_string(sensor_id) +
            " exposuretimerange=\"20000000 20000000\" gainrange=\"128 128\" wbmode=1" +
-           " ! video/x-raw(memory:NVMM), width=" + std::to_string(width) +
-           ", height=" + std::to_string(height) + ", framerate=" + std::to_string(fps) + "/1 ! " +
+           " ! video/x-raw(memory:NVMM), width=" + to_string(width) +
+           ", height=" + to_string(height) + ", framerate=" + to_string(fps) + "/1 ! " +
            "nvvidconv flip-method=0 ! video/x-raw, format=BGRx ! " +
            "videoconvert ! video/x-raw, format=BGR ! appsink";
 }
 
 int main() {
     int width = 3264, height = 2464, fps = 21;
-
     VideoCapture cap0(get_pipeline(0, width, height, fps), cv::CAP_GSTREAMER);
     VideoCapture cap1(get_pipeline(1, width, height, fps), cv::CAP_GSTREAMER);
 
     if (!cap0.isOpened() || !cap1.isOpened()) {
-        cerr << "\n[ERROR] 카메라 열기 실패!" << endl;
+        cerr << "[ERROR] 카메라 열기 실패!" << endl;
         return -1;
     }
 
+    Mat map_img = Mat::zeros(Size(1280, 960), CV_8UC3);
     Mat img_left, img_right;
-    int wait_count = 0;
-    while(wait_count < 50){
-        cap0.read(img_left);
-        cap1.read(img_right);
-        if(!img_left.empty() && !img_right.empty()){
-            break;
-        }
-        wait_count++;
-        this_thread::sleep_for(chrono::milliseconds(20));
-    }
-
-    if(img_left.empty() || img_right.empty()){
-        cout << "Cannot read Image" << endl;
-        return -1;
-    }
-
-    resize(img_left, img_left, Size(1280, 960));
-    resize(img_right, img_right, Size(1280, 960));
-    flip(img_left, img_left, -1);
-    flip(img_right, img_right, -1);
-
-    imwrite("leftImage.jpg", img_left);
-    imwrite("rightImage.jpg", img_right);
-
-    cvtColor(img_left, img_left, COLOR_BGR2GRAY);
-    cvtColor(img_right, img_right, COLOR_BGR2GRAY);
-    medianBlur(img_left, img_left, 3);
-    medianBlur(img_right, img_right, 3);
-    Ptr<CLAHE> clahe = createCLAHE(2.0, Size(4, 4));
-    clahe->apply(img_left, img_left);
-    clahe->apply(img_right, img_right);
 
     Ptr<ORB> orb = ORB::create(10000, 1.2f, 8, 31, 0, 2, ORB::HARRIS_SCORE, 31, ORBTHRESHOLD);
 
-    Mat canny_edges, canny_edges_right;
-    vector<Vec4i> lines, lines_right;
-    Canny(img_left, canny_edges, 50, 100);
-    HoughLinesP(canny_edges, lines, 1, CV_PI / 180, 40, 10, 40);
-    Canny(img_right, canny_edges_right, 50, 100);
-    HoughLinesP(canny_edges_right, lines_right, 1, CV_PI / 180, 40, 10, 40);
+    while (true) {
+        cap0.read(img_left);
+        cap1.read(img_right);
+        if (img_left.empty() || img_right.empty()) continue;
 
-    Mat hough_mask = Mat::zeros(img_left.size(), CV_8UC1);
-    for (const auto& hline : lines)
-        line(hough_mask, Point(hline[0], hline[1]), Point(hline[2], hline[3]), Scalar(255), 1);
-    dilate(hough_mask, hough_mask, Mat(), Point(-1, -1), 2);
+        int key = waitKey(1);
+        if (key == 27) break;      // ESC: 종료
+        if (key != 'p') continue;  // 'p' 키 아니면 패스
 
-    Mat hough_mask_right = Mat::zeros(img_right.size(), CV_8UC1);
-    for (const auto& hline : lines_right)
-        line(hough_mask_right, Point(hline[0], hline[1]), Point(hline[2], hline[3]), Scalar(255), 1);
-    dilate(hough_mask_right, hough_mask_right, Mat(), Point(-1, -1), 2);
+        resize(img_left, img_left, Size(1280, 960));
+        resize(img_right, img_right, Size(1280, 960));
+        flip(img_left, img_left, -1);
+        flip(img_right, img_right, -1);
+        cvtColor(img_left, img_left, COLOR_BGR2GRAY);
+        cvtColor(img_right, img_right, COLOR_BGR2GRAY);
+        medianBlur(img_left, img_left, 3);
+        medianBlur(img_right, img_right, 3);
+        Ptr<CLAHE> clahe = createCLAHE(2.0, Size(4, 4));
+        clahe->apply(img_left, img_left);
+        clahe->apply(img_right, img_right);
 
-    vector<KeyPoint> kp_left_raw, kp_right_raw;
-    Mat desc_left_raw, desc_right_raw;
-    orb->detectAndCompute(img_left, hough_mask, kp_left_raw, desc_left_raw);
-    orb->detectAndCompute(img_right, hough_mask_right, kp_right_raw, desc_right_raw);
-    cout << "Canny-Orb keypoint number: " << kp_left_raw.size() << endl;
+        Mat canny_edges, canny_edges_right;
+        vector<Vec4i> lines, lines_right;
+        Canny(img_left, canny_edges, 50, 100);
+        HoughLinesP(canny_edges, lines, 1, CV_PI / 180, 40, 10, 40);
+        Canny(img_right, canny_edges_right, 50, 100);
+        HoughLinesP(canny_edges_right, lines_right, 1, CV_PI / 180, 40, 10, 40);
 
-    vector<KeyPoint> kp_left, kp_right, filtered_kp;
-    Mat desc_left, desc_right, filtered_desc;
-    vector<int> sorted_indices;
-    for(int i = 0; i < kp_left_raw.size(); i++) sorted_indices.push_back(i);
-    sort(sorted_indices.begin(), sorted_indices.end(), [&](int a, int b) {
-        return kp_left_raw[a].response > kp_left_raw[b].response;
-    });
-    vector<bool> used(kp_left_raw.size(), false);
+        Mat hough_mask = Mat::zeros(img_left.size(), CV_8UC1);
+        for (const auto& l : lines)
+            line(hough_mask, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255), 1);
+        dilate(hough_mask, hough_mask, Mat(), Point(-1, -1), 2);
 
-    const float CLUSTER_RADIUS = 10.0f;
-    for(int i : sorted_indices){
-        if(used[i]) continue;
-        const Point2f& center = kp_left_raw[i].pt;
-        filtered_kp.push_back(kp_left_raw[i]);
-        filtered_desc.push_back(desc_left_raw.row(i));
-        used[i] = true;
-        for(int j = 0; j < kp_left_raw.size(); j++){
-            if(!used[j] && norm(kp_left_raw[j].pt - center) < CLUSTER_RADIUS) used[j] = true;
-        }
-    }
-    kp_left = filtered_kp;
-    desc_left = filtered_desc.clone();
+        Mat hough_mask_right = Mat::zeros(img_right.size(), CV_8UC1);
+        for (const auto& l : lines_right)
+            line(hough_mask_right, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255), 1);
+        dilate(hough_mask_right, hough_mask_right, Mat(), Point(-1, -1), 2);
 
-    sorted_indices.clear(); filtered_kp.clear(); filtered_desc.release(); used.clear();
-    for(int i = 0; i < kp_right_raw.size(); i++) {
-        used.push_back(false);
-        sorted_indices.push_back(i);
-    }
-    sort(sorted_indices.begin(), sorted_indices.end(), [&](int a, int b) {
-        return kp_right_raw[a].response > kp_right_raw[b].response;
-    });
-    for(int i : sorted_indices){
-        if(used[i]) continue;
-        const Point2f& center = kp_right_raw[i].pt;
-        filtered_kp.push_back(kp_right_raw[i]);
-        filtered_desc.push_back(desc_right_raw.row(i));
-        used[i] = true;
-        for(int j = 0; j < kp_right_raw.size(); j++){
-            if(!used[j] && norm(kp_right_raw[j].pt - center) < CLUSTER_RADIUS) used[j] = true;
-        }
-    }
-    kp_right = filtered_kp;
-    desc_right = filtered_desc.clone();
+        vector<KeyPoint> kp_left, kp_right;
+        Mat desc_left, desc_right;
+        orb->detectAndCompute(img_left, hough_mask, kp_left, desc_left);
+        orb->detectAndCompute(img_right, hough_mask_right, kp_right, desc_right);
 
-    vector<int> sortedLeft, sortedRight;
-    for (int i = 0; i < kp_left.size(); i++) sortedLeft.push_back(i);
-    for (int i = 0; i < kp_right.size(); i++) sortedRight.push_back(i);
-    sort(sortedLeft.begin(), sortedLeft.end(), [&](int a, int b) { return kp_left[a].pt.y < kp_left[b].pt.y; });
-    sort(sortedRight.begin(), sortedRight.end(), [&](int a, int b) { return kp_right[a].pt.y < kp_right[b].pt.y; });
+        vector<DMatch> matches;
+        BFMatcher matcher(NORM_HAMMING);
+        matcher.match(desc_left, desc_right, matches);
 
-    deque<int> trainIndex;
-    int current = 0;
-    vector<DMatch> matches;
-    vector<float> disparities;
-    for (int i = 0; i < kp_left.size(); i++) {
-        while (!trainIndex.empty() && kp_right[trainIndex[0]].pt.y < kp_left[sortedLeft[i]].pt.y - HORIZENTALITY)
-            trainIndex.pop_front();
-        while (current < sortedRight.size() && kp_right[sortedRight[current]].pt.y <= kp_left[sortedLeft[i]].pt.y + HORIZENTALITY)
-            trainIndex.push_back(sortedRight[current++]);
-
-        int best_idx = -1, best_dist = INT_MAX;
-        for (int j = 0; j < trainIndex.size(); j++) {
-            int dist = norm(desc_left.row(sortedLeft[i]), desc_right.row(trainIndex[j]), NORM_HAMMING);
-            if(kp_right[trainIndex[j]].pt.x - kp_left[sortedLeft[i]].pt.x < 0) continue;
-            if (dist < best_dist) {
-                best_dist = dist;
-                best_idx = j;
+        vector<DMatch> good_matches;
+        for (const auto& m : matches) {
+            Point2f pl = kp_left[m.queryIdx].pt;
+            Point2f pr = kp_right[m.trainIdx].pt;
+            float disparity = pr.x - pl.x;
+            if (disparity > 1 && disparity < 100 && abs(pl.y - pr.y) < HORIZENTALITY) {
+                good_matches.push_back(m);
             }
         }
-        if (best_dist < MATCHTHRESHOLD) {
-            matches.emplace_back(sortedLeft[i], trainIndex[best_idx], (float)best_dist);
-            trainIndex.erase(trainIndex.begin() + best_idx);
+
+        for (const auto& m : good_matches) {
+            const KeyPoint& kp = kp_left[m.queryIdx];
+            float response = kp.response;
+            Scalar color = (response > 50) ? Scalar(0, 255, 0) : Scalar(0, 165, 255);
+            circle(map_img, kp.pt, 2, color, -1);
         }
+
+        imshow("2D Map", map_img);
+        imwrite("/home/eunzi/Desktop/2d_map.jpg", map_img);
+        cout << "[INFO] 'p' 키 입력 → 프레임 처리 완료" << endl;
     }
-
-    std::vector<cv::DMatch> valid_matches;
-    for (const auto& match : matches) {
-        Point2f pt_left = kp_left[match.queryIdx].pt;
-        Point2f pt_right = kp_right[match.trainIdx].pt;
-        float disparity = pt_right.x - pt_left.x;
-        if (disparity > 1 && disparity < 100) {
-            disparities.push_back(disparity);
-            valid_matches.push_back(match);
-        }
-    }
-    for(auto d : disparities) cout << d << endl;
-
-    Mat match_img;
-    drawMatches(img_left, kp_left, img_right, kp_right,
-                valid_matches, match_img, Scalar::all(-1),
-                Scalar::all(-1), vector<char>(),
-                DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-
-    Mat direction_img, direction_img_right;
-    cvtColor(canny_edges, direction_img, COLOR_GRAY2BGR);
-    cvtColor(canny_edges_right, direction_img_right, COLOR_GRAY2BGR);
-    for (const auto& l : lines) line(direction_img, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255, 0, 255), 2);
-    for (const auto& l : lines_right) line(direction_img_right, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255, 0, 255), 2);
-    for (const auto& kp : kp_left) circle(direction_img, kp.pt, 3, Scalar(0, 255, 0), -1);
-    for (const auto& kp : kp_right) circle(direction_img_right, kp.pt, 3, Scalar(0, 255, 0), -1);
-
-    resize(match_img, match_img, Size(1280, 480));
-    resize(img_left, img_left, Size(640, 480));
-    resize(img_right, img_right, Size(640, 480));
-    resize(direction_img, direction_img, Size(640, 480));
-    resize(direction_img_right, direction_img_right, Size(640, 480));
-
-    imshow("ORB Matches", match_img);
-    imwrite("/home/eunzi/Desktop/orb_matches.jpg", match_img);
-    imwrite("/home/eunzi/Desktop/direction_orb.jpg", direction_img);
-
-    // === 2D 맵 생성 ===
-    Mat map_img = Mat::zeros(Size(640, 480), CV_8UC3);
-    for (const auto& match : valid_matches) {
-        const KeyPoint& kp = kp_left[match.queryIdx];
-        float response = kp.response;
-        Scalar color = (response > 50) ? Scalar(0, 255, 0) : Scalar(0, 165, 255);
-        circle(map_img, kp.pt, 2, color, -1);
-    }
-    imshow("2D Map", map_img);
-    imwrite("/home/eunzi/Desktop/2d_map.jpg", map_img);
-    cout << "[INFO] 2D \ub9f5 \uc774\ubbf8\uc9c0 \uc800\uc7a5 \uc644\ub8cc: /home/eunzi/Desktop/2d_map.jpg" << endl;
 
     cap0.release();
     cap1.release();
-    waitKey(0);
+    destroyAllWindows();
     return 0;
 }
